@@ -19,6 +19,21 @@ A browser-based implementation of Conway's Game of Life with an interactive edit
 - **Import/Export** — save and load full board state as CSV
 - **Save/Load Sections** — save a selection to CSV, load a section file into the clipboard for pasting
 
+## Included Patterns
+
+The repo includes a library of classic Game of Life patterns as CSV files, organized by category:
+
+| Category | Patterns |
+|---|---|
+| **Static** (still lifes) | block, boat (NE/NW/SE/SW), hive (horizontal/vertical), loaf, tub, lopsided o, acorn end state |
+| **Oscillators** | blinker, toad, beacon, pulsar, pentadecathlon |
+| **Spaceships** | glider (NE/NW/SE/SW), glider crash (4-way), LWSS, MWSS, HWSS (E/N), c/10 orthogonal, hammerhead |
+| **Methuselahs** | r-pentomino (1103 gen), diehard (130 gen), acorn (5206 gen), figure eight (250 gen) |
+| **Generators** | Gosper glider gun, max spacefiller |
+| **Fillers** | netmaker |
+
+Use **Load Section** in the sidebar to load any pattern into the clipboard, then **Paste** to place it on the board.
+
 ## Usage
 
 Open `game_of_life.html` in any modern browser.
