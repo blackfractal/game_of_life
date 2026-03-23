@@ -393,25 +393,7 @@
             onMouseDown(e) {
                 const pos = this.screenToWorld(e.clientX, e.clientY);
                 
-                // Middle mouse button always pans
-                if (e.button === 1) {
-                    this.isPanning = true;
-                    this.panStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
-                    this.canvas.style.cursor = 'grabbing';
-                    return;
-                }
-                
-                // Right mouse button always selects
-                if (e.button === 2) {
-                    this.isSelecting = true;
-                    this.selectionStart = pos;
-                    this.selection = null;
-                    this.updateSelectionUI();
-                    this.render();
-                    return;
-                }
-                
-                // Left mouse button depends on selected tool
+                // Left mouse button + Draw tool
                 if (this.tool === 'draw' && e.button === 0) {
                     this.isDrawing = true;
                     const key = `${pos.x},${pos.y}`;
@@ -424,16 +406,22 @@
                     }
                     this.saveHistory();
                     this.render();
-                } else if (this.tool === 'select' && e.button === 0) {
+
+                // Left mouse button + Draw tool, or Right mouse button
+                } else if ((this.tool === 'select' && e.button === 0) || (e.button === 2)) {
                     this.isSelecting = true;
                     this.selectionStart = pos;
                     this.selection = null;
                     this.updateSelectionUI();
                     this.render();
-                } else if (this.tool === 'pan' && e.button === 0) {
+
+                // Left mouse button + Draw tool, or Middle mouse button
+                } else if ((this.tool === 'pan' && e.button === 0) || (e.button === 1)) {
                     this.isPanning = true;
                     this.panStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
                     this.canvas.style.cursor = 'grabbing';
+
+                // Left mouse button + Move tool
                 } else if (this.tool === 'move' && this.selection && e.button === 0) {
                     // Start moving selection
                     this.moveOffset = {
@@ -449,26 +437,6 @@
                 this.mouseY = pos.y;
                 document.getElementById('coordinates').textContent = `Mouse: (${pos.x}, ${pos.y})`;
                 
-                // Handle middle mouse panning
-                if (this.isPanning && (e.button === 1 || this.tool === 'pan')) {
-                    this.offsetX = e.clientX - this.panStart.x;
-                    this.offsetY = e.clientY - this.panStart.y;
-                    this.render();
-                    return;
-                }
-                
-                // Handle right mouse selecting
-                if (this.isSelecting && (e.button === 2 || this.tool === 'select')) {
-                    const x1 = Math.min(this.selectionStart.x, pos.x);
-                    const y1 = Math.min(this.selectionStart.y, pos.y);
-                    const x2 = Math.max(this.selectionStart.x, pos.x);
-                    const y2 = Math.max(this.selectionStart.y, pos.y);
-                    
-                    this.selection = { x1, y1, x2, y2 };
-                    this.render();
-                    return;
-                }
-                
                 if (this.tool === 'draw' && this.isDrawing) {
                     const key = `${pos.x},${pos.y}`;
                     if (this.drawMode === 'add') {
@@ -477,7 +445,7 @@
                         this.board.delete(key);
                     }
                     this.render();
-                } else if (this.tool === 'select' && this.isSelecting) {
+                } else if ((this.tool === 'select' || e.button === 2) && this.isSelecting) {
                     const x1 = Math.min(this.selectionStart.x, pos.x);
                     const y1 = Math.min(this.selectionStart.y, pos.y);
                     const x2 = Math.max(this.selectionStart.x, pos.x);
@@ -485,7 +453,7 @@
                     
                     this.selection = { x1, y1, x2, y2 };
                     this.render();
-                } else if (this.tool === 'pan' && this.isPanning) {
+                } else if ((this.tool === 'pan' || e.button === 1) && this.isPanning) {
                     this.offsetX = e.clientX - this.panStart.x;
                     this.offsetY = e.clientY - this.panStart.y;
                     this.render();
@@ -510,10 +478,8 @@
                     this.panStart = null;
                     this.canvas.style.cursor = this.tool === 'pan' ? 'grab' : (this.tool === 'move' ? 'move' : 'crosshair');
                     return;
-                }
-                
                 // Handle right mouse button release  
-                if (e.button === 2) {
+                } else if (e.button === 2) {
                     this.isSelecting = false;
                     
                     // If no drag occurred (click without drag), clear selection
@@ -525,11 +491,12 @@
                     
                     this.updateSelectionUI();
                     return;
-                }
-                
-                if (this.tool === 'draw') {
+                // Handle left mouse button + Draw tool release
+                } else if (this.tool === 'draw') {
                     this.isDrawing = false;
                     this.drawMode = null;
+
+                // Handle left mouse button + Select tool release
                 } else if (this.tool === 'select') {
                     this.isSelecting = false;
                     
