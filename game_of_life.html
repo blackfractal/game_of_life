@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conway's Game of Life</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+            background: #f0f0f0;
+            overflow: hidden;
+        }
+
+        #canvasContainer {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            background: white;
+            border: 1px solid #ccc;
+            cursor: crosshair;
+            display: block;
+        }
+
+        #sidebar {
+            width: 310px; // accommodate Simulation buttons: Step Pause, Show Next, Clear
+            background: #333;
+            color: white;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 10;
+        }
+
+        .tool-section {
+            background: #444;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .tool-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+
+        .tool-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        button {
+            background: #555;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        button:hover {
+            background: #666;
+        }
+
+        button.active {
+            background: #007acc;
+        }
+
+        button:disabled {
+            background: #333;
+            cursor: not-allowed;
+        }
+
+        .speed-control, .history-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+        }
+
+        input[type="file"] {
+            background: #555;
+            color: white;
+            border: 1px solid #666;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        #coordinates {
+            font-family: monospace;
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .selection-info {
+            font-family: monospace;
+            font-size: 11px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 60px;
+            background: #555;
+            color: white;
+            border: 1px solid #666;
+            border-radius: 3px;
+            padding: 5px;
+            font-family: monospace;
+            font-size: 11px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvasContainer">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    
+    <div id="sidebar">
+        <div class="tool-section">
+            <h3>Tools</h3>
+            <div class="tool-buttons">
+                <button id="drawTool" class="active">Draw</button>
+                <button id="selectTool">Select</button>
+                <button id="panTool">Pan</button>
+                <button id="moveTool" disabled>Move Cells</button>
+            </div>
+            <div id="coordinates">Mouse: (0, 0)</div>
+        </div>
+
+        <div class="tool-section">
+            <h3>Simulation</h3>
+            <div class="tool-buttons">
+                <button id="stepBtn">Step</button>
+                <button id="playBtn">Play</button>
+                <button id="showNextBtn">Show Next</button>
+                <button id="clearBtn">Clear</button>
+            </div>
+            <div class="speed-control">
+                <span>Speed:</span>
+                <input type="range" id="speedSlider" min="0" max="100" value="50">
+                <span id="speedLabel">10.0/s</span>
+            </div>
+        </div>
+
+        <div class="tool-section">
+            <h3>History</h3>
+            <div class="tool-buttons">
+                <button id="backBtn" disabled>Back</button>
+                <button id="forwardBtn" disabled>Forward</button>
+            </div>
+            <div class="history-control">
+                <span>Gen: </span>
+                <span id="generationLabel">0</span>
+                <span>History: </span>
+                <span id="historyLabel">0/100</span>
+            </div>
+        </div>
+
+        <div class="tool-section">
+            <h3>Selection</h3>
+            <div class="tool-buttons">
+                <button id="cutBtn" disabled>Cut</button>
+                <button id="copyBtn" disabled>Copy</button>
+                <button id="pasteBtn" disabled>Paste</button>
+            </div>
+            <div class="selection-info" id="selectionInfo">No selection</div>
+        </div>
+
+        <div class="tool-section">
+            <h3>Board State</h3>
+            <div class="tool-buttons">
+                <button id="exportBtn">Export Board</button>
+                <button id="importBtn">Import Board</button>
+            </div>
+            <input type="file" id="importFile" accept=".csv" style="display: none;">
+        </div>
+
+        <div class="tool-section">
+            <h3>Selected Sections</h3>
+            <div class="tool-buttons">
+                <button id="saveSectionBtn" disabled>Save Selection</button>
+                <button id="loadSectionBtn">Load Section</button>
+            </div>
+            <input type="file" id="loadSectionFile" accept=".csv" style="display: none;">
+            <input type="text" id="loadedSectionName" readonly placeholder="No section loaded" 
+                   style="background: #666; color: #ccc; border: 1px solid #555; padding: 5px; margin-top: 5px; width: 100%; font-size: 11px;">
+        </div>
+    </div>
+
+    <script>
+        class GameOfLife {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.width = 1000;
+                this.height = 1000;
+                this.cellSize = 10;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.scale = 1;
+                
+                // Game state
+                this.board = new Set(); // Only store living cells
+                this.history = [];
+                this.historyIndex = -1;
+                this.maxHistory = 100;
+                this.generation = 0;
+                
+                // UI state
+                this.tool = 'draw';
+                this.isPlaying = false;
+                this.playInterval = null;
+                this.speed = 1.0; // generations per second
+                this.showNext = false;
+                
+                // Mouse state
+                this.mouseX = 0;
+                this.mouseY = 0;
+                this.isDrawing = false;
+                this.drawMode = null; // 'add' or 'remove'
+                this.isPanning = false;
+                this.panStart = null;
+                
+                // Selection state
+                this.selection = null;
+                this.clipboard = null;
+                this.selectionStart = null;
+                this.isSelecting = false;
+                
+                this.setupCanvas();
+                this.setupEventListeners();
+                this.render();
+            }
+            
+            setupCanvas() {
+                const container = document.getElementById('canvasContainer');
+                const resizeCanvas = () => {
+                    const rect = container.getBoundingClientRect();
+                    this.canvas.width = rect.width;
+                    this.canvas.height = rect.height;
+                    this.render();
+                };
+                
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+            }
+            
+            setupEventListeners() {
+                // Mouse events
+                this.canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+                this.canvas.addEventListener('wheel', (e) => this.onWheel(e));
+                this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+                
+                // Tool buttons
+                document.getElementById('drawTool').addEventListener('click', () => this.setTool('draw'));
+                document.getElementById('selectTool').addEventListener('click', () => this.setTool('select'));
+                document.getElementById('panTool').addEventListener('click', () => this.setTool('pan'));
+                document.getElementById('moveTool').addEventListener('click', () => this.setTool('move'));
+                
+                // Simulation controls
+                document.getElementById('stepBtn').addEventListener('click', () => this.step());
+                document.getElementById('playBtn').addEventListener('click', () => this.togglePlay());
+                document.getElementById('showNextBtn').addEventListener('click', () => this.toggleShowNext());
+                document.getElementById('clearBtn').addEventListener('click', () => this.clear());
+                
+                // Speed control
+                const speedSlider = document.getElementById('speedSlider');
+                speedSlider.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    // Map 0-100 to 0.2-20.0 generations per second
+                    this.speed = 0.2 + (value / 100) * 19.8;
+                    document.getElementById('speedLabel').textContent = `${this.speed.toFixed(1)}/s`;
+                    if (this.isPlaying) {
+                        this.stopPlay();
+                        this.startPlay();
+                    }
+                });
+                
+                // Initialize speed to 10.0/s
+                this.speed = 10.0;
+                
+                // History controls
+                document.getElementById('backBtn').addEventListener('click', () => this.goBack());
+                document.getElementById('forwardBtn').addEventListener('click', () => this.goForward());
+                
+                // Selection controls
+                document.getElementById('cutBtn').addEventListener('click', () => this.cut());
+                document.getElementById('copyBtn').addEventListener('click', () => this.copy());
+                document.getElementById('pasteBtn').addEventListener('click', () => this.paste());
+                
+                // Import/Export
+                document.getElementById('exportBtn').addEventListener('click', () => this.exportBoard());
+                document.getElementById('importBtn').addEventListener('click', () => {
+                    document.getElementById('importFile').click();
+                });
+                document.getElementById('importFile').addEventListener('change', (e) => this.importBoard(e));
+                
+                // Section controls
+                document.getElementById('saveSectionBtn').addEventListener('click', () => this.saveSection());
+                document.getElementById('loadSectionBtn').addEventListener('click', () => {
+                    document.getElementById('loadSectionFile').click();
+                });
+                document.getElementById('loadSectionFile').addEventListener('change', (e) => this.loadSection(e));
+                
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => {
+                    if (e.target.tagName === 'TEXTAREA') return;
+                    
+                    switch(e.key) {
+                        case ' ':
+                            e.preventDefault();
+                            if (this.isPlaying) this.stopPlay(); else this.startPlay();
+                            break;
+                        case 's':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.step();
+                            }
+                            break;
+                        case 'c':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.copy();
+                            }
+                            break;
+                        case 'v':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.paste();
+                            }
+                            break;
+                        case 'x':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.cut();
+                            }
+                            break;
+                        case 'z':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.goBack();
+                            }
+                            break;
+                        case 'y':
+                            if (e.ctrlKey) {
+                                e.preventDefault();
+                                this.goForward();
+                            }
+                            break;
+                    }
+                });
+            }
+            
+            screenToWorld(screenX, screenY) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (screenX - rect.left - this.offsetX) / (this.cellSize * this.scale);
+                const y = (screenY - rect.top - this.offsetY) / (this.cellSize * this.scale);
+                return {
+                    x: Math.floor(x),
+                    y: Math.floor(y)
+                };
+            }
+            
+            worldToScreen(worldX, worldY) {
+                return {
+                    x: worldX * this.cellSize * this.scale + this.offsetX,
+                    y: worldY * this.cellSize * this.scale + this.offsetY
+                };
+            }
+            
+            onMouseDown(e) {
+                const pos = this.screenToWorld(e.clientX, e.clientY);
+                
+                // Middle mouse button always pans
+                if (e.button === 1) {
+                    this.isPanning = true;
+                    this.panStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
+                    this.canvas.style.cursor = 'grabbing';
+                    return;
+                }
+                
+                // Right mouse button always selects
+                if (e.button === 2) {
+                    this.isSelecting = true;
+                    this.selectionStart = pos;
+                    this.selection = null;
+                    this.updateSelectionUI();
+                    this.render();
+                    return;
+                }
+                
+                // Left mouse button depends on selected tool
+                if (this.tool === 'draw' && e.button === 0) {
+                    this.isDrawing = true;
+                    const key = `${pos.x},${pos.y}`;
+                    if (this.board.has(key)) {
+                        this.drawMode = 'remove';
+                        this.board.delete(key);
+                    } else {
+                        this.drawMode = 'add';
+                        this.board.add(key);
+                    }
+                    this.saveHistory();
+                    this.render();
+                } else if (this.tool === 'select' && e.button === 0) {
+                    this.isSelecting = true;
+                    this.selectionStart = pos;
+                    this.selection = null;
+                    this.updateSelectionUI();
+                    this.render();
+                } else if (this.tool === 'pan' && e.button === 0) {
+                    this.isPanning = true;
+                    this.panStart = { x: e.clientX - this.offsetX, y: e.clientY - this.offsetY };
+                    this.canvas.style.cursor = 'grabbing';
+                } else if (this.tool === 'move' && this.selection && e.button === 0) {
+                    // Start moving selection
+                    this.moveOffset = {
+                        x: pos.x - this.selection.x1,
+                        y: pos.y - this.selection.y1
+                    };
+                }
+            }
+            
+            onMouseMove(e) {
+                const pos = this.screenToWorld(e.clientX, e.clientY);
+                this.mouseX = pos.x;
+                this.mouseY = pos.y;
+                document.getElementById('coordinates').textContent = `Mouse: (${pos.x}, ${pos.y})`;
+                
+                // Handle middle mouse panning
+                if (this.isPanning && (e.button === 1 || this.tool === 'pan')) {
+                    this.offsetX = e.clientX - this.panStart.x;
+                    this.offsetY = e.clientY - this.panStart.y;
+                    this.render();
+                    return;
+                }
+                
+                // Handle right mouse selecting
+                if (this.isSelecting && (e.button === 2 || this.tool === 'select')) {
+                    const x1 = Math.min(this.selectionStart.x, pos.x);
+                    const y1 = Math.min(this.selectionStart.y, pos.y);
+                    const x2 = Math.max(this.selectionStart.x, pos.x);
+                    const y2 = Math.max(this.selectionStart.y, pos.y);
+                    
+                    this.selection = { x1, y1, x2, y2 };
+                    this.render();
+                    return;
+                }
+                
+                if (this.tool === 'draw' && this.isDrawing) {
+                    const key = `${pos.x},${pos.y}`;
+                    if (this.drawMode === 'add') {
+                        this.board.add(key);
+                    } else {
+                        this.board.delete(key);
+                    }
+                    this.render();
+                } else if (this.tool === 'select' && this.isSelecting) {
+                    const x1 = Math.min(this.selectionStart.x, pos.x);
+                    const y1 = Math.min(this.selectionStart.y, pos.y);
+                    const x2 = Math.max(this.selectionStart.x, pos.x);
+                    const y2 = Math.max(this.selectionStart.y, pos.y);
+                    
+                    this.selection = { x1, y1, x2, y2 };
+                    this.render();
+                } else if (this.tool === 'pan' && this.isPanning) {
+                    this.offsetX = e.clientX - this.panStart.x;
+                    this.offsetY = e.clientY - this.panStart.y;
+                    this.render();
+                } else if (this.tool === 'move' && this.selection && this.moveOffset) {
+                    // Update selection position for visual feedback
+                    const newX = pos.x - this.moveOffset.x;
+                    const newY = pos.y - this.moveOffset.y;
+                    this.tempSelection = {
+                        x1: newX,
+                        y1: newY,
+                        x2: newX + (this.selection.x2 - this.selection.x1),
+                        y2: newY + (this.selection.y2 - this.selection.y1)
+                    };
+                    this.render();
+                }
+            }
+            
+            onMouseUp(e) {
+                // Handle middle mouse button release
+                if (e.button === 1) {
+                    this.isPanning = false;
+                    this.panStart = null;
+                    this.canvas.style.cursor = this.tool === 'pan' ? 'grab' : (this.tool === 'move' ? 'move' : 'crosshair');
+                    return;
+                }
+                
+                // Handle right mouse button release  
+                if (e.button === 2) {
+                    this.isSelecting = false;
+                    
+                    // If no drag occurred (click without drag), clear selection
+                    if (this.selection && 
+                        this.selection.x1 === this.selection.x2 && 
+                        this.selection.y1 === this.selection.y2) {
+                        this.selection = null;
+                    }
+                    
+                    this.updateSelectionUI();
+                    return;
+                }
+                
+                if (this.tool === 'draw') {
+                    this.isDrawing = false;
+                    this.drawMode = null;
+                } else if (this.tool === 'select') {
+                    this.isSelecting = false;
+                    
+                    // If no drag occurred (click without drag), clear selection
+                    if (this.selection && 
+                        this.selection.x1 === this.selection.x2 && 
+                        this.selection.y1 === this.selection.y2) {
+                        this.selection = null;
+                    }
+                    
+                    this.updateSelectionUI();
+                } else if (this.tool === 'pan') {
+                    this.isPanning = false;
+                    this.panStart = null;
+                    this.canvas.style.cursor = 'grab';
+                } else if (this.tool === 'move' && this.selection && this.moveOffset) {
+                    // Actually move the cells
+                    const pos = this.screenToWorld(e.clientX, e.clientY);
+                    const deltaX = pos.x - this.moveOffset.x - this.selection.x1;
+                    const deltaY = pos.y - this.moveOffset.y - this.selection.y1;
+                    
+                    if (deltaX !== 0 || deltaY !== 0) {
+                        this.moveCells(this.selection, deltaX, deltaY);
+                        this.selection.x1 += deltaX;
+                        this.selection.y1 += deltaY;
+                        this.selection.x2 += deltaX;
+                        this.selection.y2 += deltaY;
+                        this.saveHistory();
+                        this.updateSelectionUI();
+                    }
+                    
+                    this.moveOffset = null;
+                    this.tempSelection = null;
+                    this.render();
+                }
+            }
+            
+            onWheel(e) {
+                e.preventDefault();
+                const pos = this.screenToWorld(e.clientX, e.clientY);
+                const oldScale = this.scale;
+                
+                if (e.deltaY > 0) {
+                    this.scale = Math.max(0.1, this.scale / 1.2);
+                } else {
+                    this.scale = Math.min(5, this.scale * 1.2);
+                }
+                
+                // Adjust offset to zoom toward mouse position
+                const scaleRatio = this.scale / oldScale;
+                this.offsetX = e.clientX - (e.clientX - this.offsetX) * scaleRatio;
+                this.offsetY = e.clientY - (e.clientY - this.offsetY) * scaleRatio;
+                
+                this.render();
+            }
+            
+            setTool(tool) {
+                this.tool = tool;
+                document.querySelectorAll('.tool-buttons button').forEach(btn => btn.classList.remove('active'));
+                document.getElementById(tool + 'Tool').classList.add('active');
+                
+                if (tool !== 'select' && tool !== 'move') {
+                    this.selection = null;
+                    this.updateSelectionUI();
+                }
+                
+                // Set appropriate cursor
+                if (tool === 'pan') {
+                    this.canvas.style.cursor = 'grab';
+                } else if (tool === 'move') {
+                    this.canvas.style.cursor = 'move';
+                } else {
+                    this.canvas.style.cursor = 'crosshair';
+                }
+            }
+            
+            step() {
+                if (this.isPlaying) return;
+                
+                this.saveHistory();
+                this.nextGeneration();
+                this.generation++;
+                this.updateUI();
+                this.render();
+            }
+            
+            nextGeneration() {
+                const newBoard = new Set();
+                const cellsToCheck = new Set();
+                
+                // Add all living cells and their neighbors to check list
+                for (const key of this.board) {
+                    const [x, y] = key.split(',').map(Number);
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            cellsToCheck.add(`${x + dx},${y + dy}`);
+                        }
+                    }
+                }
+                
+                // Apply Conway's rules
+                for (const key of cellsToCheck) {
+                    const [x, y] = key.split(',').map(Number);
+                    const neighbors = this.countNeighbors(x, y);
+                    const isAlive = this.board.has(key);
+                    
+                    if (isAlive && (neighbors === 2 || neighbors === 3)) {
+                        newBoard.add(key);
+                    } else if (!isAlive && neighbors === 3) {
+                        newBoard.add(key);
+                    }
+                }
+                
+                this.board = newBoard;
+            }
+            
+            countNeighbors(x, y) {
+                let count = 0;
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        if (dx === 0 && dy === 0) continue;
+                        if (this.board.has(`${x + dx},${y + dy}`)) {
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            }
+            
+            togglePlay() {
+                if (this.isPlaying) {
+                    this.stopPlay();
+                } else {
+                    this.startPlay();
+                }
+            }
+            
+            toggleShowNext() {
+                this.showNext = !this.showNext;
+                const btn = document.getElementById('showNextBtn');
+                btn.classList.toggle('active', this.showNext);
+                this.render();
+            }
+            
+            startPlay() {
+                this.isPlaying = true;
+                document.getElementById('playBtn').textContent = 'Pause';
+                this.playInterval = setInterval(() => {
+                    this.saveHistory();
+                    this.nextGeneration();
+                    this.generation++;
+                    this.updateUI();
+                    this.render();
+                }, 1000 / this.speed);
+            }
+            
+            stopPlay() {
+                this.isPlaying = false;
+                document.getElementById('playBtn').textContent = 'Play';
+                if (this.playInterval) {
+                    clearInterval(this.playInterval);
+                    this.playInterval = null;
+                }
+            }
+            
+            clear() {
+                this.stopPlay();
+                this.board.clear();
+                this.generation = 0;
+                this.history = [];
+                this.historyIndex = -1;
+                this.selection = null;
+                this.updateUI();
+                this.updateSelectionUI();
+                this.render();
+            }
+            
+            saveHistory() {
+                // Remove future history if we're in the middle
+                this.history = this.history.slice(0, this.historyIndex + 1);
+                
+                // Add current state
+                this.history.push({
+                    board: new Set(this.board),
+                    generation: this.generation
+                });
+                
+                // Limit history size
+                if (this.history.length > this.maxHistory) {
+                    this.history.shift();
+                } else {
+                    this.historyIndex++;
+                }
+                
+                this.updateUI();
+            }
+            
+            goBack() {
+                if (this.historyIndex > 0) {
+                    this.historyIndex--;
+                    const state = this.history[this.historyIndex];
+                    this.board = new Set(state.board);
+                    this.generation = state.generation;
+                    this.updateUI();
+                    this.render();
+                }
+            }
+            
+            goForward() {
+                if (this.historyIndex < this.history.length - 1) {
+                    this.historyIndex++;
+                    const state = this.history[this.historyIndex];
+                    this.board = new Set(state.board);
+                    this.generation = state.generation;
+                    this.updateUI();
+                    this.render();
+                }
+            }
+            
+            cut() {
+                if (!this.selection) return;
+                this.copy();
+                this.deleteCells(this.selection);
+                this.saveHistory();
+                this.render();
+            }
+            
+            copy() {
+                if (!this.selection) return;
+                this.clipboard = [];
+                
+                for (let y = this.selection.y1; y <= this.selection.y2; y++) {
+                    for (let x = this.selection.x1; x <= this.selection.x2; x++) {
+                        if (this.board.has(`${x},${y}`)) {
+                            this.clipboard.push({
+                                x: x - this.selection.x1,
+                                y: y - this.selection.y1
+                            });
+                        }
+                    }
+                }
+                
+                this.updateSelectionUI();
+            }
+            
+            paste() {
+                if (!this.clipboard) return;
+                
+                let pasteX, pasteY;
+                
+                if (this.selection) {
+                    // Paste to top-left of current selection
+                    pasteX = this.selection.x1;
+                    pasteY = this.selection.y1;
+                } else {
+                    // Paste at mouse position
+                    pasteX = this.mouseX;
+                    pasteY = this.mouseY;
+                }
+                
+                // Calculate bounds of pasted content
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                
+                for (const cell of this.clipboard) {
+                    const actualX = pasteX + cell.x;
+                    const actualY = pasteY + cell.y;
+                    this.board.add(`${actualX},${actualY}`);
+                    
+                    minX = Math.min(minX, actualX);
+                    minY = Math.min(minY, actualY);
+                    maxX = Math.max(maxX, actualX);
+                    maxY = Math.max(maxY, actualY);
+                }
+                
+                // Create selection around pasted content
+                if (this.clipboard.length > 0) {
+                    this.selection = {
+                        x1: minX,
+                        y1: minY,
+                        x2: maxX,
+                        y2: maxY
+                    };
+                    this.updateSelectionUI();
+                }
+
+                // Auto-select move tool after paste
+                this.setTool('move');
+                this.saveHistory();
+                this.render();
+            }
+            
+            deleteCells(selection) {
+                for (let y = selection.y1; y <= selection.y2; y++) {
+                    for (let x = selection.x1; x <= selection.x2; x++) {
+                        this.board.delete(`${x},${y}`);
+                    }
+                }
+            }
+            
+            moveCells(selection, deltaX, deltaY) {
+                const cellsToMove = [];
+                
+                // Collect cells to move
+                for (let y = selection.y1; y <= selection.y2; y++) {
+                    for (let x = selection.x1; x <= selection.x2; x++) {
+                        const key = `${x},${y}`;
+                        if (this.board.has(key)) {
+                            cellsToMove.push({ x, y });
+                            this.board.delete(key);
+                        }
+                    }
+                }
+                
+                // Move cells to new positions
+                for (const cell of cellsToMove) {
+                    this.board.add(`${cell.x + deltaX},${cell.y + deltaY}`);
+                }
+            }
+            
+            exportBoard() {
+                const cells = Array.from(this.board).map(key => {
+                    const [x, y] = key.split(',').map(Number);
+                    return `${x},${y}`;
+                }).join('\n');
+                
+                const csv = `# Conway's Game of Life Board State\n# Generation: ${this.generation}\n# Format: x,y\n${cells}`;
+                
+                // Create and trigger download
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `game_of_life_gen${this.generation}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            importBoard(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const csv = event.target.result;
+                    this.parseCSV(csv, true);
+                };
+                reader.readAsText(file);
+            }
+            
+            saveSection() {
+                if (!this.selection) return;
+                
+                const cells = [];
+                for (let y = this.selection.y1; y <= this.selection.y2; y++) {
+                    for (let x = this.selection.x1; x <= this.selection.x2; x++) {
+                        if (this.board.has(`${x},${y}`)) {
+                            cells.push(`${x - this.selection.x1},${y - this.selection.y1}`);
+                        }
+                    }
+                }
+                
+                const csv = `# Conway's Game of Life Section\n# Size: ${this.selection.x2 - this.selection.x1 + 1}x${this.selection.y2 - this.selection.y1 + 1}\n# Format: x,y (relative coordinates)\n${cells.join('\n')}`;
+                
+                // Create and trigger download
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `section_${this.selection.x2 - this.selection.x1 + 1}x${this.selection.y2 - this.selection.y1 + 1}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            loadSection(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const csv = event.target.result;
+                    this.parseCSV(csv, false);
+                    // Update the loaded section name display
+                    document.getElementById('loadedSectionName').value = file.name;
+                };
+                reader.readAsText(file);
+            }
+            
+            parseCSV(csv, isFullBoard) {
+                const lines = csv.split('\n');
+                const newBoard = isFullBoard ? new Set() : this.board;
+                
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (trimmed === '' || trimmed.startsWith('#')) continue;
+                    
+                    const parts = trimmed.split(',');
+                    if (parts.length >= 2) {
+                        const x = parseInt(parts[0]);
+                        const y = parseInt(parts[1]);
+                        if (!isNaN(x) && !isNaN(y)) {
+                            if (isFullBoard) {
+                                newBoard.add(`${x},${y}`);
+                            } else {
+                                // Load as clipboard for pasting
+                                if (!this.clipboard) this.clipboard = [];
+                                this.clipboard.push({ x, y });
+                            }
+                        }
+                    }
+                }
+                
+                if (isFullBoard) {
+                    this.board = newBoard;
+                    this.generation = 0;
+                    this.history = [];
+                    this.historyIndex = -1;
+                    this.selection = null;
+                    this.updateUI();
+                    this.updateSelectionUI();
+                } else {
+                    // Clear existing clipboard and load new section
+                    this.clipboard = [];
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (trimmed === '' || trimmed.startsWith('#')) continue;
+                        
+                        const parts = trimmed.split(',');
+                        if (parts.length >= 2) {
+                            const x = parseInt(parts[0]);
+                            const y = parseInt(parts[1]);
+                            if (!isNaN(x) && !isNaN(y)) {
+                                this.clipboard.push({ x, y });
+                            }
+                        }
+                    }
+                    this.updateSelectionUI();
+                }
+                
+                this.render();
+            }
+            
+            downloadFile(filename, content) {
+                const blob = new Blob([content], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            updateUI() {
+                document.getElementById('generationLabel').textContent = this.generation;
+                document.getElementById('historyLabel').textContent = `${this.history.length}/${this.maxHistory}`;
+                document.getElementById('backBtn').disabled = this.historyIndex <= 0;
+                document.getElementById('forwardBtn').disabled = this.historyIndex >= this.history.length - 1;
+            }
+            
+            updateSelectionUI() {
+                const hasSelection = !!this.selection;
+                const hasClipboard = !!this.clipboard;
+                
+                document.getElementById('moveTool').disabled = !hasSelection;
+                document.getElementById('cutBtn').disabled = !hasSelection;
+                document.getElementById('copyBtn').disabled = !hasSelection;
+                document.getElementById('pasteBtn').disabled = !hasClipboard;
+                document.getElementById('saveSectionBtn').disabled = !hasSelection;
+                
+                if (hasSelection) {
+                    const width = this.selection.x2 - this.selection.x1 + 1;
+                    const height = this.selection.y2 - this.selection.y1 + 1;
+                    document.getElementById('selectionInfo').textContent = 
+                        `Selected: ${width}x${height} at (${this.selection.x1}, ${this.selection.y1})`;
+                } else {
+                    document.getElementById('selectionInfo').textContent = 'No selection';
+                }
+            }
+            
+            getNextGenerationPreview() {
+                const nextGenCells = { willTurnOn: new Set(), willTurnOff: new Set() };
+                const cellsToCheck = new Set();
+                
+                // Add all living cells and their neighbors to check list
+                for (const key of this.board) {
+                    const [x, y] = key.split(',').map(Number);
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            cellsToCheck.add(`${x + dx},${y + dy}`);
+                        }
+                    }
+                }
+                
+                // Determine which cells will change
+                for (const key of cellsToCheck) {
+                    const [x, y] = key.split(',').map(Number);
+                    const neighbors = this.countNeighbors(x, y);
+                    const isAlive = this.board.has(key);
+                    
+                    if (isAlive) {
+                        // Currently alive - will it survive?
+                        if (neighbors < 2 || neighbors > 3) {
+                            nextGenCells.willTurnOff.add(key);
+                        }
+                    } else {
+                        // Currently dead - will it be born?
+                        if (neighbors === 3) {
+                            nextGenCells.willTurnOn.add(key);
+                        }
+                    }
+                }
+                
+                return nextGenCells;
+            }
+            
+            render() {
+                const ctx = this.ctx;
+                ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Calculate visible area
+                const cellSize = this.cellSize * this.scale;
+                const startX = Math.floor(-this.offsetX / cellSize);
+                const startY = Math.floor(-this.offsetY / cellSize);
+                const endX = Math.ceil((this.canvas.width - this.offsetX) / cellSize);
+                const endY = Math.ceil((this.canvas.height - this.offsetY) / cellSize);
+                
+                // Get next generation preview if needed
+                let nextGenPreview = null;
+                if (this.showNext) {
+                    nextGenPreview = this.getNextGenerationPreview();
+                }
+                
+                // Draw grid (only if zoomed in enough)
+                if (cellSize > 4) {
+                    ctx.strokeStyle = '#e0e0e0';
+                    ctx.lineWidth = 0.5;
+                    
+                    for (let x = startX; x <= endX; x++) {
+                        const screenX = x * cellSize + this.offsetX;
+                        ctx.beginPath();
+                        ctx.moveTo(screenX, 0);
+                        ctx.lineTo(screenX, this.canvas.height);
+                        ctx.stroke();
+                    }
+                    
+                    for (let y = startY; y <= endY; y++) {
+                        const screenY = y * cellSize + this.offsetY;
+                        ctx.beginPath();
+                        ctx.moveTo(0, screenY);
+                        ctx.lineTo(this.canvas.width, screenY);
+                        ctx.stroke();
+                    }
+                }
+                
+                // Draw living cells
+                ctx.fillStyle = 'black';
+                for (const key of this.board) {
+                    const [x, y] = key.split(',').map(Number);
+                    
+                    // Only draw cells that are visible
+                    if (x >= startX && x <= endX && y >= startY && y <= endY) {
+                        const screenX = x * cellSize + this.offsetX;
+                        const screenY = y * cellSize + this.offsetY;
+                        ctx.fillRect(screenX, screenY, cellSize, cellSize);
+                    }
+                }
+                
+                // Draw next generation preview if enabled
+                if (nextGenPreview) {
+                    // Draw cells that will turn on (birth) in light blue
+                    ctx.fillStyle = 'rgba(0, 150, 255, 0.6)';
+                    for (const key of nextGenPreview.willTurnOn) {
+                        const [x, y] = key.split(',').map(Number);
+                        if (x >= startX && x <= endX && y >= startY && y <= endY) {
+                            const screenX = x * cellSize + this.offsetX;
+                            const screenY = y * cellSize + this.offsetY;
+                            ctx.fillRect(screenX, screenY, cellSize, cellSize);
+                        }
+                    }
+                    
+                    // Draw cells that will turn off (death) in red
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.6)';
+                    for (const key of nextGenPreview.willTurnOff) {
+                        const [x, y] = key.split(',').map(Number);
+                        if (x >= startX && x <= endX && y >= startY && y <= endY) {
+                            const screenX = x * cellSize + this.offsetX;
+                            const screenY = y * cellSize + this.offsetY;
+                            ctx.fillRect(screenX, screenY, cellSize, cellSize);
+                        }
+                    }
+                }
+                
+                // Draw selection
+                const selection = this.tempSelection || this.selection;
+                if (selection) {
+                    ctx.strokeStyle = 'red';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    
+                    const x1 = selection.x1 * cellSize + this.offsetX;
+                    const y1 = selection.y1 * cellSize + this.offsetY;
+                    const width = (selection.x2 - selection.x1 + 1) * cellSize;
+                    const height = (selection.y2 - selection.y1 + 1) * cellSize;
+                    
+                    ctx.strokeRect(x1, y1, width, height);
+                    ctx.setLineDash([]);
+                }
+            }
+        }
+        
+        // Initialize the game when page loads
+        window.addEventListener('load', () => {
+            const canvas = document.getElementById('gameCanvas');
+            window.game = new GameOfLife(canvas);
+        });
+    </script>
+</body>
+</html>
