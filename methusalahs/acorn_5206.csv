@@ -1,0 +1,11 @@
+# Conway's Game of Life Section - Acorn (Methuselah)
+# Size: 7x3
+# Takes 5206 generations to stabilize
+# Format: x,y (relative coordinates)
+1,0
+3,1
+0,2
+1,2
+4,2
+5,2
+6,2

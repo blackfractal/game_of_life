@@ -1,0 +1,11 @@
+# Conway's Game of Life Section - Diehard Pattern
+# Size: 8x3
+# Dies completely after exactly 130 generations
+# Format: x,y (relative coordinates)
+6,0
+0,1
+1,1
+1,2
+5,2
+6,2
+7,2

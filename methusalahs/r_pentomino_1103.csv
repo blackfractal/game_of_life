@@ -1,0 +1,9 @@
+# Conway's Game of Life Section - R-Pentomino (Methuselah)
+# Size: 3x3
+# Evolves for 1103 generations before stabilizing
+# Format: x,y (relative coordinates)
+1,0
+2,0
+0,1
+1,1
+1,2
