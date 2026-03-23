@@ -1,0 +1,16 @@
+# Conway's Game of Life Section
+# Size: 5x7
+# Format: x,y (relative coordinates)
+2,0
+3,0
+4,0
+1,1
+4,1
+4,2
+0,3
+4,3
+0,4
+4,4
+4,5
+1,6
+3,6
